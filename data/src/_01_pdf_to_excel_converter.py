@@ -126,3 +126,171 @@ class PDFTableExtractor:
                 best_tables = tables
         
         return best_tables
+    
+class TableCleaner:
+    """Handles post-processing and cleaning of extracted tables."""
+    
+    TYPE_VALUES = ['ONGOING', 'NEW', 'COMPLETED', 'SUSPENDED']
+    
+    @staticmethod
+    def merge_continuation_rows(df: pd.DataFrame, code_col: int = 0, name_col: int = 1) -> Tuple[pd.DataFrame, int]:
+        """
+        Merge rows where CODE column is empty (continuation rows).
+        
+        Args:
+            df: DataFrame to process
+            code_col: Index of CODE column
+            name_col: Index of PROJECT NAME column
+            
+        Returns:
+            Tuple of (cleaned DataFrame with merged rows, number of rows merged)
+        """
+        df = df.copy()
+        rows_to_drop = []
+        
+        for i in range(1, len(df)):  # Skip header row
+            code_value = str(df.iloc[i, code_col]).strip()
+            
+            # Check if this is a continuation row (empty CODE)
+            if TableCleaner._is_empty_code(code_value):
+                # Merge with previous row
+                prev_row_idx = i - 1
+                current_name = str(df.iloc[i, name_col]).strip()
+                
+                if current_name and current_name != 'nan':
+                    prev_name = str(df.iloc[prev_row_idx, name_col]).strip()
+                    df.iloc[prev_row_idx, name_col] = f"{prev_name} {current_name}"
+                
+                rows_to_drop.append(i)
+        
+        # Drop continuation rows and reset index
+        df = df.drop(rows_to_drop).reset_index(drop=True)
+        
+        return df, len(rows_to_drop)
+    
+    @staticmethod
+    def _is_empty_code(code_value: str) -> bool:
+        """Check if a code value is empty or invalid."""
+        return not code_value or code_value in ('', 'nan', 'None')
+    
+    @staticmethod
+    def is_ergp_table(df: pd.DataFrame) -> bool:
+        """
+        Check if table contains ERGP project codes.
+        ERGP codes start with 'ERGP' followed by numbers.
+        
+        Args:
+            df: DataFrame to check
+            
+        Returns:
+            True if table contains ERGP codes, False otherwise
+        """
+        # Check first few rows of column 0 (CODE column)
+        for i in range(min(5, len(df))):
+            code = str(df.iloc[i, 0]).strip().upper()
+            if code.startswith('ERGP'):
+                return True
+        return False
+    
+    @staticmethod
+    def fix_merged_type_column(df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Fix ERGP tables where TYPE column is merged with PROJECT NAME.
+        Only applies to 3-column ERGP tables.
+        
+        Background:
+            Some ERGP tables have TYPE (ONGOING/NEW/COMPLETED) concatenated
+            to PROJECT NAME like "BUILD ROAD.ONGOING" instead of separate columns.
+            This happens at PDF source level - not a Camelot extraction issue.
+        
+        Args:
+            df: DataFrame with 3 columns (CODE, PROJECT_NAME+TYPE, AMOUNT)
+            
+        Returns:
+            DataFrame with 4 columns (CODE, PROJECT_NAME, TYPE, AMOUNT)
+            
+        Side Effects:
+            - Inserts new column at position 2 (between PROJECT NAME and AMOUNT)
+            - Modifies PROJECT NAME column (removes TYPE suffix)
+            - Logs number of rows where TYPE was extracted
+            
+        Example:
+            Before (3 columns):
+                0: ERGP123 | 1: BUILD ROAD.ONGOING | 2: 1,000,000
+            
+            After (4 columns):
+                0: ERGP123 | 1: BUILD ROAD | 2: ONGOING | 3: 1,000,000
+        
+        Note:
+            Only recognizes TYPE_VALUES: ONGOING, NEW, COMPLETED, SUSPENDED.
+            If PDF has different TYPE values, add them to TYPE_VALUES constant.
+            
+            Handles separators: period (.), comma (,), space ( )
+            Example: "...ONGOING", "...,ONGOING", "... ONGOING" all work
+        """
+        df = df.copy()
+        
+        # WHY: Insert at position 2 specifically?
+        # ERGP tables have structure: CODE (0) | PROJECT_NAME (1) | AMOUNT (2)
+        # We want: CODE (0) | PROJECT_NAME (1) | TYPE (2) | AMOUNT (3)
+        # So TYPE goes between PROJECT_NAME and AMOUNT
+        new_col_name = len(df.columns)
+        df.insert(2, new_col_name, '')
+        
+        rows_fixed = 0
+        
+        # WHY: Loop through all rows instead of vectorized operation?
+        # Because we need to check multiple TYPE values per row with early break
+        # Pandas doesn't have clean vectorized "endswith any of these" + extract
+        for i in range(len(df)):
+            project_name = str(df.iloc[i, 1])
+            
+            # WHY: Check each TYPE value in order?
+            # Try most common first (ONGOING), fail fast if not found
+            # Break after first match to avoid double-processing
+            for type_val in TableCleaner.TYPE_VALUES:
+                if project_name.upper().endswith(type_val):
+                    # WHY: Remove and strip in one operation?
+                    # project_name[:-len(type_val)] removes TYPE
+                    # .rstrip('., ') removes trailing separators (., comma, space)
+                    # Example: "BUILD ROAD.ONGOING" → "BUILD ROAD." → "BUILD ROAD"
+                    cleaned_name = project_name[:-len(type_val)].rstrip('., ')
+                    df.iloc[i, 1] = cleaned_name
+                    df.iloc[i, 2] = type_val
+                    rows_fixed += 1
+                    break  # WHY break? Only one TYPE per project
+        
+        # WHY: Log only if rows_fixed > 0?
+        # Avoid cluttering output for tables that don't need fixing
+        if rows_fixed > 0:
+            print(f"    → Fixed merged TYPE column: {rows_fixed} rows had TYPE extracted")
+        
+        return df
+
+
+class ExcelExporter:
+    """Handles exporting tables to Excel."""
+    
+    def __init__(self, output_path: str):
+        self.output_path = output_path
+        self.writer = None
+    
+    def __enter__(self):
+        self.writer = pd.ExcelWriter(self.output_path, engine='openpyxl')
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.writer:
+            self.writer.close()
+    
+    def export_table(self, df: pd.DataFrame, sheet_name: str):
+        """
+        Export a DataFrame to a sheet in the Excel file.
+        
+        Args:
+            df: DataFrame to export
+            sheet_name: Name for the Excel sheet (max 31 chars)
+        """
+        # Truncate sheet name to Excel's limit
+        sheet_name = sheet_name[:31]
+        df.to_excel(self.writer, sheet_name=sheet_name, index=False, header=False)
