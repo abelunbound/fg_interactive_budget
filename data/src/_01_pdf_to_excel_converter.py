@@ -63,7 +63,66 @@ row_tol (int): Vertical spacing threshold for row grouping
     - Range: 1-15, Default: 3
     - Increase if multi-line descriptions not combining
 
-Author: [Your Name]
+Author: Abel O. Akeni
 Created: 2026-01-09
 Python: 3.8+
 """
+
+from typing import Tuple #List, 
+import camelot # pylint: disable=no-member
+import pandas as pd
+
+class PDFTableExtractor:
+    """Handles PDF table extraction using Camelot."""   
+
+    def __init__(self, pdf_path: str):
+        self.pdf_path = pdf_path
+
+    def extract_tables(self, pages: str, row_tol: int = 3, column_tol: int = 3):
+        """
+        Extract tables from specified PDF pages.
+        
+        Args:
+            pages: Page range (e.g., '1-10', '1,3,5')
+            row_tol: Row tolerance for text grouping (vertical)
+            column_tol: Column tolerance for detecting column separators (horizontal)
+                       Lower values = more sensitive to spacing = more columns detected
+            
+        Returns:
+            TableList object containing extracted tables
+        """
+        tables = camelot.read_pdf(
+            self.pdf_path,
+            pages=pages,
+            flavor='stream',
+            row_tol=row_tol,
+            column_tol=column_tol  # Critical for column detection
+        )
+        return tables
+    
+    def extract_with_adaptive_params(self, pages: str):
+        """
+        Try multiple parameter combinations to find best extraction.
+        Useful when table structure varies across pages.
+        """
+        param_combinations = [
+            {'row_tol': 3, 'column_tol': 2},  # Most sensitive
+            {'row_tol': 3, 'column_tol': 3},  # Moderate
+            {'row_tol': 3, 'column_tol': 5},  # Less sensitive
+        ]
+        
+        best_tables = None
+        best_score = 0
+        
+        for params in param_combinations:
+            tables = self.extract_tables(pages, **params)
+            
+            # Simple scoring: prefer extractions with correct column count
+            # For ERGP tables, we expect 4 columns: CODE, NAME, TYPE, AMOUNT
+            score = sum(1 for t in tables if t.df.shape[1] == 4)
+            
+            if score > best_score:
+                best_score = score
+                best_tables = tables
+        
+        return best_tables
