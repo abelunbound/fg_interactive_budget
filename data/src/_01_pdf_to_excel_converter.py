@@ -294,3 +294,105 @@ class ExcelExporter:
         # Truncate sheet name to Excel's limit
         sheet_name = sheet_name[:31]
         df.to_excel(self.writer, sheet_name=sheet_name, index=False, header=False)
+
+class PDFToExcelConverter:
+    """Main orchestrator for PDF to Excel conversion."""
+    
+    def __init__(self, pdf_path: str, output_path: str):
+        self.extractor = PDFTableExtractor(pdf_path)
+        self.cleaner = TableCleaner()
+        self.output_path = output_path
+    
+    def convert(self, pages: str = '1-10', merge_rows: bool = True, row_tol: int = 3, column_tol: int = 1) -> dict:
+        """
+        Convert PDF tables to Excel.
+        
+        Args:
+            pages: Page range to extract
+            merge_rows: Whether to merge continuation rows
+            row_tol: Row tolerance for text grouping
+            column_tol: Column tolerance (use 1-3 for ERGP tables to separate TYPE column)
+            
+        Returns:
+            Dictionary with conversion statistics
+        """
+        # Extract tables with optimal parameters
+        tables = self.extractor.extract_tables(pages, row_tol=row_tol, column_tol=column_tol)
+        print(f"Found {tables.n} tables\n")
+        
+        stats = {
+            'total_tables': tables.n,
+            'tables_processed': [],
+            'total_rows_merged': 0
+        }
+        
+        # Process and export
+        with ExcelExporter(self.output_path) as exporter:
+            for idx, table in enumerate(tables):
+                df = table.df.copy()
+                rows_merged = 0
+                
+                print(f"Found {tables.n} tables\n", flush=True)  # ← Add flush=True
+                # PROCESSING ORDER IS CRITICAL:
+                # 
+                # Step 1: Fix TYPE column FIRST (if needed)
+                # WHY FIRST? Creates correct 4-column structure before row merging
+                # If we merge rows first on 3-column structure, then add TYPE column,
+                # we'd need to re-detect which column indices to use for merging
+                if df.shape[1] == 3 and self.cleaner.is_ergp_table(df):
+                    df = self.cleaner.fix_merged_type_column(df)
+                
+                # Step 2: Merge continuation rows AFTER TYPE fix
+                # WHY AFTER? Continuation row merging expects correct column structure
+                # Works on column 0 (CODE) and column 1 (PROJECT_NAME)
+                # If TYPE column doesn't exist yet, indices would be wrong
+                if merge_rows and df.shape[0] > 1:  # Skip if only header
+                    df, rows_merged = self.cleaner.merge_continuation_rows(df)
+                
+                # Generate sheet name
+                sheet_name = f"Page_{table.page}_T{idx+1}"
+                
+                # Export to Excel
+                exporter.export_table(df, sheet_name)
+                
+                # Track statistics
+                table_stat = {
+                    'table_num': idx + 1,
+                    'page': table.page,
+                    'rows_merged': rows_merged,
+                    'final_shape': df.shape,
+                    'accuracy': table.accuracy
+                }
+                stats['tables_processed'].append(table_stat)
+                stats['total_rows_merged'] += rows_merged
+                
+                print(f"Table {idx+1} (Page {table.page}): "
+                      f"{rows_merged} rows merged, "
+                      f"final shape: {df.shape}, "
+                      f"accuracy: {table.accuracy:.2f}%" , flush=True)
+        
+        print(f"\nSaved to {self.output_path}")
+        return stats
+    
+def main():
+    """Main execution function."""
+    # Configuration
+    pdf_path = '2026 Appropriation Bill Details.pdf'
+    output_path = 'output.xlsx'
+    pages = '5-2790'
+    
+    # Convert
+    converter = PDFToExcelConverter(pdf_path, output_path)
+    stats = converter.convert(pages=pages, merge_rows=True, row_tol=3, column_tol=1)
+    
+    # Summary
+    print(f"{'='*60}")
+    print("CONVERSION SUMMARY")
+    print(f"{'='*60}")
+    print(f"Total tables extracted: {stats['total_tables']}")
+    print(f"Total rows merged: {stats['total_rows_merged']}")
+    print(f"Output file: {output_path}")
+
+
+if __name__ == "__main__":
+    main()
