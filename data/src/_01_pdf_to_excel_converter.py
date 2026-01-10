@@ -1,12 +1,15 @@
+# flake8: noqa
 """
 Nigerian Budget PDF to Excel Converter
 =======================================
 
-Extracts tables from Nigerian government appropriation bill PDFs into Excel spreadsheets.
+Extracts tables from Nigerian government appropriation bill PDFs into Excel
+spreadsheets.
 
 Key Challenge Solved:
 ---------------------
-Nigerian budget PDFs have TYPE column (ONGOING/NEW/COMPLETED) merged with PROJECT NAME.
+Nigerian budget PDFs have TYPE column (ONGOING/NEW/COMPLETED) merged 
+with PROJECT NAME.
 Example: "BUILD ROAD.ONGOING" instead of separate columns.
 
 This tool:
@@ -47,7 +50,7 @@ Design Decisions:
 Usage:
 ------
     from pdf_to_excel_converter import PDFToExcelConverter
-    
+
     converter = PDFToExcelConverter('budget.pdf', 'output.xlsx')
     converter.convert(pages='1-10', column_tol=1, row_tol=3)
 
@@ -57,8 +60,8 @@ column_tol (int): Horizontal spacing threshold for column detection
     - Lower = more sensitive = more columns detected
     - Range: 1-10, Default: 1
     - Use 1 for ERGP tables (TYPE column separation)
-    
-row_tol (int): Vertical spacing threshold for row grouping  
+
+row_tol (int): Vertical spacing threshold for row grouping
     - Lower = more rows, Higher = more merging
     - Range: 1-15, Default: 3
     - Increase if multi-line descriptions not combining
@@ -68,12 +71,13 @@ Created: 2026-01-09
 Python: 3.8+
 """
 
-from typing import Tuple #List, 
-import camelot # pylint: disable=no-member
+from typing import Tuple  # List,
+import camelot  # pylint: disable=no-member
 import pandas as pd
 
+
 class PDFTableExtractor:
-    """Handles PDF table extraction using Camelot."""   
+    """Handles PDF table extraction using Camelot."""
 
     def __init__(self, pdf_path: str):
         self.pdf_path = pdf_path
@@ -81,170 +85,173 @@ class PDFTableExtractor:
     def extract_tables(self, pages: str, row_tol: int = 3, column_tol: int = 3):
         """
         Extract tables from specified PDF pages.
-        
+
         Args:
             pages: Page range (e.g., '1-10', '1,3,5')
             row_tol: Row tolerance for text grouping (vertical)
             column_tol: Column tolerance for detecting column separators (horizontal)
                        Lower values = more sensitive to spacing = more columns detected
-            
+
         Returns:
             TableList object containing extracted tables
         """
         tables = camelot.read_pdf(
             self.pdf_path,
             pages=pages,
-            flavor='stream',
+            flavor="stream",
             row_tol=row_tol,
-            column_tol=column_tol  # Critical for column detection
+            column_tol=column_tol,  # Critical for column detection
         )
         return tables
-    
+
     def extract_with_adaptive_params(self, pages: str):
         """
         Try multiple parameter combinations to find best extraction.
         Useful when table structure varies across pages.
         """
         param_combinations = [
-            {'row_tol': 3, 'column_tol': 2},  # Most sensitive
-            {'row_tol': 3, 'column_tol': 3},  # Moderate
-            {'row_tol': 3, 'column_tol': 5},  # Less sensitive
+            {"row_tol": 3, "column_tol": 2},  # Most sensitive
+            {"row_tol": 3, "column_tol": 3},  # Moderate
+            {"row_tol": 3, "column_tol": 5},  # Less sensitive
         ]
-        
+
         best_tables = None
         best_score = 0
-        
+
         for params in param_combinations:
             tables = self.extract_tables(pages, **params)
-            
+
             # Simple scoring: prefer extractions with correct column count
             # For ERGP tables, we expect 4 columns: CODE, NAME, TYPE, AMOUNT
             score = sum(1 for t in tables if t.df.shape[1] == 4)
-            
+
             if score > best_score:
                 best_score = score
                 best_tables = tables
-        
+
         return best_tables
-    
+
+
 class TableCleaner:
     """Handles post-processing and cleaning of extracted tables."""
-    
-    TYPE_VALUES = ['ONGOING', 'NEW', 'COMPLETED', 'SUSPENDED']
-    
+
+    TYPE_VALUES = ["ONGOING", "NEW", "COMPLETED", "SUSPENDED"]
+
     @staticmethod
-    def merge_continuation_rows(df: pd.DataFrame, code_col: int = 0, name_col: int = 1) -> Tuple[pd.DataFrame, int]:
+    def merge_continuation_rows(
+        df: pd.DataFrame, code_col: int = 0, name_col: int = 1
+    ) -> Tuple[pd.DataFrame, int]:
         """
         Merge rows where CODE column is empty (continuation rows).
-        
+
         Args:
             df: DataFrame to process
             code_col: Index of CODE column
             name_col: Index of PROJECT NAME column
-            
+
         Returns:
             Tuple of (cleaned DataFrame with merged rows, number of rows merged)
         """
         df = df.copy()
         rows_to_drop = []
-        
+
         for i in range(1, len(df)):  # Skip header row
             code_value = str(df.iloc[i, code_col]).strip()
-            
+
             # Check if this is a continuation row (empty CODE)
             if TableCleaner._is_empty_code(code_value):
                 # Merge with previous row
                 prev_row_idx = i - 1
                 current_name = str(df.iloc[i, name_col]).strip()
-                
-                if current_name and current_name != 'nan':
+
+                if current_name and current_name != "nan":
                     prev_name = str(df.iloc[prev_row_idx, name_col]).strip()
                     df.iloc[prev_row_idx, name_col] = f"{prev_name} {current_name}"
-                
+
                 rows_to_drop.append(i)
-        
+
         # Drop continuation rows and reset index
         df = df.drop(rows_to_drop).reset_index(drop=True)
-        
+
         return df, len(rows_to_drop)
-    
+
     @staticmethod
     def _is_empty_code(code_value: str) -> bool:
         """Check if a code value is empty or invalid."""
-        return not code_value or code_value in ('', 'nan', 'None')
-    
+        return not code_value or code_value in ("", "nan", "None")
+
     @staticmethod
     def is_ergp_table(df: pd.DataFrame) -> bool:
         """
         Check if table contains ERGP project codes.
         ERGP codes start with 'ERGP' followed by numbers.
-        
+
         Args:
             df: DataFrame to check
-            
+
         Returns:
             True if table contains ERGP codes, False otherwise
         """
         # Check first few rows of column 0 (CODE column)
         for i in range(min(5, len(df))):
             code = str(df.iloc[i, 0]).strip().upper()
-            if code.startswith('ERGP'):
+            if code.startswith("ERGP"):
                 return True
         return False
-    
+
     @staticmethod
     def fix_merged_type_column(df: pd.DataFrame) -> pd.DataFrame:
         """
         Fix ERGP tables where TYPE column is merged with PROJECT NAME.
         Only applies to 3-column ERGP tables.
-        
+
         Background:
             Some ERGP tables have TYPE (ONGOING/NEW/COMPLETED) concatenated
             to PROJECT NAME like "BUILD ROAD.ONGOING" instead of separate columns.
             This happens at PDF source level - not a Camelot extraction issue.
-        
+
         Args:
             df: DataFrame with 3 columns (CODE, PROJECT_NAME+TYPE, AMOUNT)
-            
+
         Returns:
             DataFrame with 4 columns (CODE, PROJECT_NAME, TYPE, AMOUNT)
-            
+
         Side Effects:
             - Inserts new column at position 2 (between PROJECT NAME and AMOUNT)
             - Modifies PROJECT NAME column (removes TYPE suffix)
             - Logs number of rows where TYPE was extracted
-            
+
         Example:
             Before (3 columns):
                 0: ERGP123 | 1: BUILD ROAD.ONGOING | 2: 1,000,000
-            
+
             After (4 columns):
                 0: ERGP123 | 1: BUILD ROAD | 2: ONGOING | 3: 1,000,000
-        
+
         Note:
             Only recognizes TYPE_VALUES: ONGOING, NEW, COMPLETED, SUSPENDED.
             If PDF has different TYPE values, add them to TYPE_VALUES constant.
-            
+
             Handles separators: period (.), comma (,), space ( )
             Example: "...ONGOING", "...,ONGOING", "... ONGOING" all work
         """
         df = df.copy()
-        
+
         # WHY: Insert at position 2 specifically?
         # ERGP tables have structure: CODE (0) | PROJECT_NAME (1) | AMOUNT (2)
         # We want: CODE (0) | PROJECT_NAME (1) | TYPE (2) | AMOUNT (3)
         # So TYPE goes between PROJECT_NAME and AMOUNT
         new_col_name = len(df.columns)
-        df.insert(2, new_col_name, '')
-        
+        df.insert(2, new_col_name, "")
+
         rows_fixed = 0
-        
+
         # WHY: Loop through all rows instead of vectorized operation?
         # Because we need to check multiple TYPE values per row with early break
         # Pandas doesn't have clean vectorized "endswith any of these" + extract
         for i in range(len(df)):
             project_name = str(df.iloc[i, 1])
-            
+
             # WHY: Check each TYPE value in order?
             # Try most common first (ONGOING), fail fast if not found
             # Break after first match to avoid double-processing
@@ -254,39 +261,41 @@ class TableCleaner:
                     # project_name[:-len(type_val)] removes TYPE
                     # .rstrip('., ') removes trailing separators (., comma, space)
                     # Example: "BUILD ROAD.ONGOING" → "BUILD ROAD." → "BUILD ROAD"
-                    cleaned_name = project_name[:-len(type_val)].rstrip('., ')
+                    cleaned_name = project_name[: -len(type_val)].rstrip("., ")
                     df.iloc[i, 1] = cleaned_name
                     df.iloc[i, 2] = type_val
                     rows_fixed += 1
                     break  # WHY break? Only one TYPE per project
-        
+
         # WHY: Log only if rows_fixed > 0?
         # Avoid cluttering output for tables that don't need fixing
         if rows_fixed > 0:
-            print(f"    → Fixed merged TYPE column: {rows_fixed} rows had TYPE extracted")
-        
+            print(
+                f"    → Fixed merged TYPE column: {rows_fixed} rows had TYPE extracted"
+            )
+
         return df
 
 
 class ExcelExporter:
     """Handles exporting tables to Excel."""
-    
+
     def __init__(self, output_path: str):
         self.output_path = output_path
         self.writer = None
-    
+
     def __enter__(self):
-        self.writer = pd.ExcelWriter(self.output_path, engine='openpyxl')
+        self.writer = pd.ExcelWriter(self.output_path, engine="openpyxl")
         return self
-    
+
     def __exit__(self, exc_type, exc_val, exc_tb):
         if self.writer:
             self.writer.close()
-    
+
     def export_table(self, df: pd.DataFrame, sheet_name: str):
         """
         Export a DataFrame to a sheet in the Excel file.
-        
+
         Args:
             df: DataFrame to export
             sheet_name: Name for the Excel sheet (max 31 chars)
@@ -295,100 +304,113 @@ class ExcelExporter:
         sheet_name = sheet_name[:31]
         df.to_excel(self.writer, sheet_name=sheet_name, index=False, header=False)
 
+
 class PDFToExcelConverter:
     """Main orchestrator for PDF to Excel conversion."""
-    
+
     def __init__(self, pdf_path: str, output_path: str):
         self.extractor = PDFTableExtractor(pdf_path)
         self.cleaner = TableCleaner()
         self.output_path = output_path
-    
-    def convert(self, pages: str = '1-10', merge_rows: bool = True, row_tol: int = 3, column_tol: int = 1) -> dict:
+
+    def convert(
+        self,
+        pages: str = "1-10",
+        merge_rows: bool = True,
+        row_tol: int = 3,
+        column_tol: int = 1,
+    ) -> dict:
         """
         Convert PDF tables to Excel.
-        
+
         Args:
             pages: Page range to extract
             merge_rows: Whether to merge continuation rows
             row_tol: Row tolerance for text grouping
             column_tol: Column tolerance (use 1-3 for ERGP tables to separate TYPE column)
-            
+
         Returns:
             Dictionary with conversion statistics
         """
         # Extract tables with optimal parameters
-        tables = self.extractor.extract_tables(pages, row_tol=row_tol, column_tol=column_tol)
+        tables = self.extractor.extract_tables(
+            pages, row_tol=row_tol, column_tol=column_tol
+        )
         print(f"Found {tables.n} tables\n")
-        
+
         stats = {
-            'total_tables': tables.n,
-            'tables_processed': [],
-            'total_rows_merged': 0
+            "total_tables": tables.n,
+            "tables_processed": [],
+            "total_rows_merged": 0,
         }
-        
+
         # Process and export
         with ExcelExporter(self.output_path) as exporter:
             for idx, table in enumerate(tables):
                 df = table.df.copy()
                 rows_merged = 0
-                
+
                 print(f"Found {tables.n} tables\n", flush=True)  # ← Add flush=True
                 # PROCESSING ORDER IS CRITICAL:
-                # 
+                #
                 # Step 1: Fix TYPE column FIRST (if needed)
                 # WHY FIRST? Creates correct 4-column structure before row merging
                 # If we merge rows first on 3-column structure, then add TYPE column,
                 # we'd need to re-detect which column indices to use for merging
                 if df.shape[1] == 3 and self.cleaner.is_ergp_table(df):
                     df = self.cleaner.fix_merged_type_column(df)
-                
+
                 # Step 2: Merge continuation rows AFTER TYPE fix
                 # WHY AFTER? Continuation row merging expects correct column structure
                 # Works on column 0 (CODE) and column 1 (PROJECT_NAME)
                 # If TYPE column doesn't exist yet, indices would be wrong
                 if merge_rows and df.shape[0] > 1:  # Skip if only header
                     df, rows_merged = self.cleaner.merge_continuation_rows(df)
-                
+
                 # Generate sheet name
-                sheet_name = f"Page_{table.page}_T{idx+1}"
-                
+                sheet_name = f"Page_{table.page}_T{idx + 1}"
+
                 # Export to Excel
                 exporter.export_table(df, sheet_name)
-                
+
                 # Track statistics
                 table_stat = {
-                    'table_num': idx + 1,
-                    'page': table.page,
-                    'rows_merged': rows_merged,
-                    'final_shape': df.shape,
-                    'accuracy': table.accuracy
+                    "table_num": idx + 1,
+                    "page": table.page,
+                    "rows_merged": rows_merged,
+                    "final_shape": df.shape,
+                    "accuracy": table.accuracy,
                 }
-                stats['tables_processed'].append(table_stat)
-                stats['total_rows_merged'] += rows_merged
-                
-                print(f"Table {idx+1} (Page {table.page}): "
-                      f"{rows_merged} rows merged, "
-                      f"final shape: {df.shape}, "
-                      f"accuracy: {table.accuracy:.2f}%" , flush=True)
-        
+                stats["tables_processed"].append(table_stat)
+                stats["total_rows_merged"] += rows_merged
+
+                print(
+                    f"Table {idx + 1} (Page {table.page}): "
+                    f"{rows_merged} rows merged, "
+                    f"final shape: {df.shape}, "
+                    f"accuracy: {table.accuracy:.2f}%",
+                    flush=True,
+                )
+
         print(f"\nSaved to {self.output_path}")
         return stats
-    
+
+
 def main():
     """Main execution function."""
     # Configuration
-    pdf_path = '2026 Appropriation Bill Details.pdf'
-    output_path = 'output.xlsx'
-    pages = '5-2790'
-    
+    pdf_path = "data/inputs/2026 Appropriation Bill Details.pdf"
+    output_path = "data/outputs/output.xlsx"
+    pages = "5-10"
+
     # Convert
     converter = PDFToExcelConverter(pdf_path, output_path)
     stats = converter.convert(pages=pages, merge_rows=True, row_tol=3, column_tol=1)
-    
+
     # Summary
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print("CONVERSION SUMMARY")
-    print(f"{'='*60}")
+    print(f"{'=' * 60}")
     print(f"Total tables extracted: {stats['total_tables']}")
     print(f"Total rows merged: {stats['total_rows_merged']}")
     print(f"Output file: {output_path}")
