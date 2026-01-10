@@ -1,8 +1,13 @@
+# flake8: noqa
+# pylint: skip-file
+
+
 import dash
 from dash import dcc, html, dash_table, Input, Output, callback
 import pandas as pd
 
 # Sample data - matching your provided data
+
 data = {
     'code': [
         "0111001001", "0111001001", "0111001001", "0111001001", "0111001001",

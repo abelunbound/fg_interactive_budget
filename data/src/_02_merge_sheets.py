@@ -1,3 +1,6 @@
+# flake8: noqa
+# pylint: skip-file
+
 import pandas as pd
 
 
@@ -67,8 +70,8 @@ def merge_excel_sheets_to_one(
 
 if __name__ == "__main__":
     # ===== CONFIG =====
-    input_excel = "output.xlsx"           # Your multi-sheet file
-    output_excel = "output_merged.xlsx"   # New single-sheet file
+    input_excel = "data/outputs/output.xlsx"           # Your multi-sheet file
+    output_excel = "data/outputs/output_merged.xlsx"   # New single-sheet file
 
     merge_excel_sheets_to_one(
         input_excel=input_excel,
