@@ -3,331 +3,422 @@
 
 
 import dash
-from dash import dcc, html, dash_table, Input, Output, callback
+from dash import dcc, html, dash_table, Input, Output, State
 import pandas as pd
+import dash_bootstrap_components as dbc
 
-# Sample data - matching your provided data
+# Configuration
+input_path = "data/outputs/budget_split_into_capital_and_all_envelopes.xlsx"
+sheet_name = "LineItem_Tables"
 
-data = {
-    'code': [
-        "0111001001", "0111001001", "0111001001", "0111001001", "0111001001",
-        "0111001001", "0111001001", "0111001001", "0111001001", "0111001001",
-        "0111001001", "0111001001", "0111001001", "0111001001", "0111001001",
-        "0111001001", "0111002001", "0111003001", "0111004001", "0111005001",
-        "0111006001", "0111007001", "0111008001", "0111009001", "0111010001"
-    ],
-    'line_item': [
-        "EXPENDITURE", "PERSONNEL COST", "SALARY", "SALARIES AND WAGES",
-        "SALARY", "ALLOWANCES AND SOCIAL CONTRIBUTION", "ALLOWANCES",
-        "REGULAR ALLOWANCES", "SOCIAL CONTRIBUTIONS", "NHIS",
-        "CONTRIBUTORY PENSION - EMPLOYER'S CONTRIBUTION",
-        "EMPLOYEES' COMPENSATION SCHEME (ECS)", "OTHER RECURRENT COSTS",
-        "OVERHEAD COST", "TRAVEL& TRANSPORT - GENERAL",
-        "LOCAL TRAVEL & TRANSPORT: TRAINING", "SALARY", "SALARY", "SALARY",
-        "ALLOWANCES", "ALLOWANCES", "NHIS", "NHIS", "OVERHEAD COST", "OVERHEAD COST"
-    ],
-    'amount': [
-        43191309690, 2643122932, 1929869076, 1929869076, 1929869076,
-        713253856, 397603960, 397603960, 315649896, 96493454,
-        192986908, 26169534, 10060608332, 10060608332, 3433795667,
-        275735543, 1500000000, 2100000000, 1800000000, 450000000,
-        380000000, 85000000, 92000000, 8500000000, 9200000000
-    ]
-}
+def ingest_excel(input_path, sheet_name):
+    df = pd.read_excel(input_path, sheet_name=sheet_name)
+    
+    # Convert CODE to string and filter by length
+    df['CODE'] = df['CODE'].astype(str)
+    df = df[df['CODE'].str.len() == 8].reset_index(drop=True)
+    
+    # Rename column 4 (5th column, 0-indexed) to 'mda'
+    df = df.rename(columns={df.columns[4]: "mda"})
+    
+    # Drop column 3 (4th column, 0-indexed)
+    df = df.drop(df.columns[3], axis=1)
+    
+    # Rename columns
+    df = df.rename(columns={
+        "CODE": "line_item_code",
+        "LINE ITEM": "line_item_name",
+        "AMOUNT": "amount"
+    })
+    
+    # Convert amount to numeric (handles commas, spaces, etc.)
+    df['amount'] = df['amount'].astype(str).str.replace(',', '', regex=False)
+    df['amount'] = pd.to_numeric(df['amount'], errors='coerce')
+    
+    # Drop rows with NaN amounts
+    df = df.dropna(subset=['amount']).reset_index(drop=True)
+    
+    return df
 
-df = pd.DataFrame(data)
+# Load data
+df = ingest_excel(input_path, sheet_name)
 
-# Initialize the Dash app
-app = dash.Dash(__name__)
-app.title = "Budget Line Item Analyzer"
+# Initialize the Dash app with Bootstrap theme
+app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP])
+
+# Custom CSS
+app.index_string = '''
+<!DOCTYPE html>
+<html>
+    <head>
+        {%metas%}
+        <title>{%title%}</title>
+        {%favicon%}
+        {%css%}
+        <style>
+            :root {
+                --primary: #1a472a;
+                --primary-light: #2d5a3d;
+                --accent: #d4af37;
+                --bg: #faf8f3;
+                --bg-elevated: #ffffff;
+                --text: #2c2c2c;
+                --text-muted: #6b6b6b;
+                --border: #e0ddd5;
+            }
+            
+            body {
+                background-color: var(--bg);
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+            }
+            
+            .header {
+                border-bottom: 2px solid var(--accent);
+                padding-bottom: 1.5rem;
+                margin-bottom: 3rem;
+            }
+            
+            .header h1 {
+                font-family: Georgia, 'Times New Roman', serif;
+                font-size: 2.5rem;
+                color: var(--primary);
+                margin-bottom: 0.5rem;
+            }
+            
+            .subtitle {
+                color: var(--text-muted);
+                font-size: 0.95rem;
+                font-weight: 300;
+            }
+            
+            .controls-section {
+                background: var(--bg-elevated);
+                padding: 2rem;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(26, 71, 42, 0.08);
+                margin-bottom: 2rem;
+            }
+            
+            .results-section {
+                background: var(--bg-elevated);
+                padding: 2rem;
+                border-radius: 12px;
+                box-shadow: 0 4px 20px rgba(26, 71, 42, 0.08);
+            }
+            
+            .results-header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                margin-bottom: 1.5rem;
+                padding-bottom: 1rem;
+                border-bottom: 2px solid var(--accent);
+            }
+            
+            .results-title {
+                font-family: Georgia, 'Times New Roman', serif;
+                font-size: 1.5rem;
+                color: var(--primary);
+                margin: 0;
+            }
+            
+            .total-badge {
+                background: var(--accent);
+                color: var(--primary);
+                padding: 0.5rem 1.5rem;
+                border-radius: 50px;
+                font-weight: 600;
+                font-size: 1.1rem;
+            }
+            
+            .Select-control {
+                border: 2px solid var(--border) !important;
+                border-radius: 8px !important;
+            }
+            
+            .Select-control:hover {
+                border-color: var(--primary) !important;
+            }
+            
+            label {
+                font-size: 0.875rem;
+                font-weight: 600;
+                color: var(--primary);
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                margin-bottom: 0.5rem;
+                display: block;
+            }
+            
+            .dash-table-container {
+                overflow-x: auto;
+            }
+            
+            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner table {
+                border-collapse: separate;
+                border-spacing: 0;
+            }
+            
+            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner th {
+                background-color: var(--primary) !important;
+                color: white !important;
+                padding: 1rem !important;
+                text-align: left !important;
+                font-weight: 600 !important;
+                text-transform: uppercase;
+                font-size: 0.875rem;
+                letter-spacing: 0.5px;
+                border: none !important;
+            }
+            
+            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner td {
+                padding: 1rem !important;
+                background-color: var(--bg) !important;
+                border-bottom: 1px solid var(--border) !important;
+                border-left: none !important;
+                border-right: none !important;
+            }
+            
+            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:hover td {
+                background-color: #f0ede4 !important;
+                transition: all 0.2s;
+            }
+            
+            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:first-child th:first-child {
+                border-top-left-radius: 8px;
+            }
+            
+            .dash-table-container .dash-spreadsheet-container .dash-spreadsheet-inner tr:first-child th:last-child {
+                border-top-right-radius: 8px;
+            }
+            
+            .btn-primary {
+                background-color: var(--primary) !important;
+                border-color: var(--primary) !important;
+                font-weight: 600;
+                text-transform: uppercase;
+                letter-spacing: 0.5px;
+                padding: 0.75rem 2rem;
+            }
+            
+            .btn-primary:hover {
+                background-color: var(--primary-light) !important;
+                border-color: var(--primary-light) !important;
+            }
+            
+            .form-check-input:checked {
+                background-color: var(--primary) !important;
+                border-color: var(--primary) !important;
+            }
+            
+            .radio-group {
+                padding-bottom: 1.5rem;
+                border-bottom: 1px solid var(--border);
+                margin-bottom: 1.5rem;
+            }
+            
+            input[type="text"].form-control {
+                border: 2px solid var(--border);
+                border-radius: 8px;
+            }
+            
+            input[type="text"].form-control:focus {
+                border-color: var(--primary);
+                box-shadow: 0 0 0 0.2rem rgba(26, 71, 42, 0.1);
+            }
+            
+            .pagination-info {
+                color: var(--text-muted);
+                font-size: 0.9rem;
+                margin-top: 1rem;
+            }
+        </style>
+    </head>
+    <body>
+        {%app_entry%}
+        <footer>
+            {%config%}
+            {%scripts%}
+            {%renderer%}
+        </footer>
+    </body>
+</html>
+'''
 
 # Get unique line items for dropdown
-line_items = sorted(df['line_item'].unique().tolist())
-
-# Format currency
-def format_currency(amount):
-    return f"₦ {amount:,.2f}"
+line_items = df[['line_item_code', 'line_item_name']].drop_duplicates().sort_values('line_item_code')
+dropdown_options = [{'label': f"{row['line_item_code']} - {row['line_item_name']}", 'value': row['line_item_code']} 
+                   for _, row in line_items.iterrows()]
 
 # App layout
-app.layout = html.Div([
+app.layout = dbc.Container([
     # Header
     html.Div([
-        html.H1("Budget Line Item Analyzer", 
-                style={
-                    'fontFamily': '"Courier New", monospace',
-                    'fontSize': '2.5rem',
-                    'fontWeight': '700',
-                    'color': '#0d6b4f',
-                    'marginBottom': '0.5rem',
-                    'marginTop': '0'
-                }),
-        html.P("Explore and analyze government budget allocations across ministries, departments, and agencies",
-               style={
-                   'fontSize': '1rem',
-                   'color': '#666',
-                   'marginBottom': '2rem'
-               })
-    ], style={'padding': '2rem 3rem 1rem 3rem'}),
+        html.H1("Budget Line Item Analyzer", className="header"),
+        html.P("Ministry & MDA Budget Analysis Tool", className="subtitle")
+    ], className="header", style={'marginTop': '2rem'}),
     
-    # Controls section
+    # Controls Section
     html.Div([
         # Radio buttons
-        dcc.RadioItems(
-            id='view-type',
-            options=[
-                {'label': ' MDA (Ministries, Departments & Agencies)', 'value': 'mda'},
-                {'label': ' Mother Ministry', 'value': 'mother'}
-            ],
-            value='mda',
-            inline=True,
-            style={
-                'marginBottom': '1.5rem',
-                'paddingBottom': '1.5rem',
-                'borderBottom': '1px solid #ddd',
-                'display': 'flex',
-                'gap': '2rem'
-            },
-            labelStyle={
-                'display': 'flex',
-                'alignItems': 'center',
-                'marginRight': '2rem',
-                'fontSize': '0.95rem',
-                'cursor': 'pointer'
-            }
-        ),
-        
-        # Search controls row
         html.Div([
-            # Dropdown
-            html.Div([
+            dbc.RadioItems(
+                id='view-type',
+                options=[
+                    {'label': ' MDA View', 'value': 'mda'},
+                    {'label': ' Mother Ministry View', 'value': 'ministry'}
+                ],
+                value='mda',
+                inline=True,
+                className='mb-3'
+            )
+        ], className='radio-group'),
+        
+        # Dropdown and Download button row
+        dbc.Row([
+            dbc.Col([
+                html.Label("Select Line Item"),
                 dcc.Dropdown(
                     id='line-item-dropdown',
-                    options=[{'label': 'Select a line item...', 'value': ''}] + 
-                            [{'label': item, 'value': item} for item in line_items],
+                    options=[{'label': '-- Select a line item --', 'value': ''}] + dropdown_options,
                     value='',
-                    placeholder='Select a line item...',
-                    style={
-                        'fontFamily': 'Arial, sans-serif',
-                        'fontSize': '0.95rem'
-                    }
+                    clearable=False,
+                    style={'borderRadius': '8px'}
                 )
-            ], style={
-                'flex': '0 0 350px',
-                'marginRight': '1rem'
-            }),
-            
-            # Search input and button
-            html.Div([
-                dcc.Input(
-                    id='search-input',
-                    type='text',
-                    placeholder='Search MDAs (coming soon)...',
-                    disabled=True,
-                    style={
-                        'width': '100%',
-                        'padding': '0.65rem 1rem',
-                        'border': '1px solid #ddd',
-                        'borderRadius': '8px',
-                        'fontSize': '0.95rem',
-                        'backgroundColor': '#fafafa',
-                        'marginRight': '0.5rem'
-                    }
-                ),
-            ], style={
-                'flex': '1',
-                'marginRight': '0.5rem'
-            }),
-            
-            html.Button(
-                'Search',
-                id='search-button',
-                disabled=True,
-                style={
-                    'padding': '0.65rem 2rem',
-                    'backgroundColor': '#0d6b4f',
-                    'color': 'white',
-                    'border': 'none',
-                    'borderRadius': '8px',
-                    'fontSize': '0.95rem',
-                    'fontWeight': '600',
-                    'cursor': 'pointer',
-                    'whiteSpace': 'nowrap',
-                    'opacity': '0.5'
-                }
-            )
-        ], style={
-            'display': 'flex',
-            'alignItems': 'center',
-            'gap': '0.5rem'
-        })
-    ], style={
-        'backgroundColor': 'white',
-        'padding': '2rem',
-        'borderRadius': '8px',
-        'margin': '0 3rem 2rem 3rem',
-        'boxShadow': '0 1px 3px rgba(0,0,0,0.1)'
-    }),
+            ], width=9),
+            dbc.Col([
+                html.Label('\u00A0'),  # Non-breaking space for alignment
+                dbc.Button('Download', id='download-btn', color='primary', className='w-100')
+            ], width=3, style={'display': 'flex', 'flexDirection': 'column'})
+        ])
+    ], className='controls-section'),
     
-    # Results section
+    # Results Section
     html.Div([
         # Results header
         html.Div([
-            html.Div(id='results-title', children='Select a line item to view results',
-                    style={
-                        'fontFamily': '"Courier New", monospace',
-                        'fontSize': '1.25rem',
-                        'fontWeight': '600',
-                        'color': '#0d6b4f'
-                    }),
-            html.Div(id='total-amount', children='₦ 0.00',
-                    style={
-                        'backgroundColor': '#fff8e1',
-                        'border': '2px solid #ffc107',
-                        'borderRadius': '8px',
-                        'padding': '0.5rem 1.5rem',
-                        'fontFamily': '"Courier New", monospace',
-                        'fontSize': '1.25rem',
-                        'fontWeight': '700',
-                        'color': '#f57c00'
-                    })
-        ], style={
-            'display': 'flex',
-            'justifyContent': 'space-between',
-            'alignItems': 'center',
-            'padding': '1.5rem 2rem',
-            'backgroundColor': '#f8f8f8',
-            'borderBottom': '1px solid #ddd'
-        }),
+            html.H2(id='results-title', children='Select a line item to view results', className='results-title'),
+            html.Div(id='total-badge', children='Total: ₦0.00', className='total-badge')
+        ], className='results-header'),
         
-        # Table container
-        html.Div(id='table-container', children=[
-            html.Div([
-                html.Div([
-                    html.Div("🔍", style={
-                        'fontSize': '4rem',
-                        'color': '#ccc',
-                        'marginBottom': '1rem'
-                    }),
-                    html.P("No data to display. Please select a line item from the dropdown above.",
-                          style={'color': '#999', 'fontSize': '0.95rem'})
-                ], style={
-                    'textAlign': 'center',
-                    'padding': '4rem 2rem'
-                })
-            ])
-        ])
-    ], style={
-        'backgroundColor': 'white',
-        'borderRadius': '8px',
-        'margin': '0 3rem 2rem 3rem',
-        'boxShadow': '0 1px 3px rgba(0,0,0,0.1)',
-        'overflow': 'hidden'
-    })
-], style={
-    'backgroundColor': '#f5f5f5',
-    'minHeight': '100vh',
-    'fontFamily': 'Arial, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif'
-})
+        # Table
+        html.Div(id='table-container')
+    ], className='results-section'),
+    
+    # Store for filtered data
+    dcc.Store(id='filtered-data-store')
+    
+], fluid=True, style={'maxWidth': '1400px', 'padding': '2rem'})
 
-# Callback to update results
-@callback(
-    [Output('results-title', 'children'),
-     Output('total-amount', 'children'),
-     Output('table-container', 'children')],
-    Input('line-item-dropdown', 'value')
+# Callback to filter data and update table
+@app.callback(
+    [Output('table-container', 'children'),
+     Output('results-title', 'children'),
+     Output('total-badge', 'children'),
+     Output('filtered-data-store', 'data')],
+    [Input('line-item-dropdown', 'value'),
+     Input('view-type', 'value')]
 )
-def update_results(selected_line_item):
-    # If no line item selected, show empty state
-    if not selected_line_item or selected_line_item == '':
-        empty_state = html.Div([
-            html.Div("🔍", style={
-                'fontSize': '4rem',
-                'color': '#ccc',
-                'marginBottom': '1rem'
-            }),
-            html.P("No data to display. Please select a line item from the dropdown above.",
-                  style={'color': '#999', 'fontSize': '0.95rem'})
-        ], style={
-            'textAlign': 'center',
-            'padding': '4rem 2rem'
-        })
+def update_table(selected_line_item, view_type):
+    if not selected_line_item:
+        empty_msg = html.Div([
+            html.Div('📊', style={'fontSize': '3rem', 'opacity': '0.5', 'marginBottom': '1rem'}),
+            html.P('Select a line item from the dropdown above to view budget data')
+        ], style={'textAlign': 'center', 'padding': '3rem', 'color': 'var(--text-muted)'})
         
-        return (
-            'Select a line item to view results',
-            '₦ 0.00',
-            empty_state
-        )
+        return empty_msg, 'Select a line item to view results', 'Total: ₦0.00', None
     
     # Filter data
-    filtered_df = df[df['line_item'] == selected_line_item].copy()
-    total_amount = filtered_df['amount'].sum()
+    filtered_df = df[df['line_item_code'] == selected_line_item].copy()
     
-    # Create table with built-in pagination
-    table = dash_table.DataTable(
-        data=filtered_df.to_dict('records'),
-        columns=[
-            {'name': 'CODE', 'id': 'code'},
-            {'name': 'LINE ITEM', 'id': 'line_item'},
-            {'name': 'AMOUNT (₦)', 'id': 'amount', 'type': 'numeric',
-             'format': {'specifier': ',.2f', 'locale': {'symbol': ['₦ ', '']}}}
-        ],
-        # Built-in pagination
-        page_action='native',
-        page_current=0,
-        page_size=10,
+    if filtered_df.empty:
+        empty_msg = html.Div([
+            html.Div('🔍', style={'fontSize': '3rem', 'opacity': '0.5', 'marginBottom': '1rem'}),
+            html.P('No results found for the selected line item')
+        ], style={'textAlign': 'center', 'padding': '3rem', 'color': 'var(--text-muted)'})
         
-        style_table={'overflowX': 'auto'},
-        style_header={
-            'backgroundColor': '#0d6b4f',
-            'color': 'white',
-            'fontWeight': '700',
-            'textTransform': 'uppercase',
-            'fontSize': '0.75rem',
-            'letterSpacing': '0.05em',
-            'padding': '1rem',
-            'fontFamily': 'Arial, sans-serif'
-        },
-        style_data={
-            'fontFamily': '"Courier New", monospace',
-            'fontSize': '0.9rem',
-            'padding': '1rem'
-        },
+        return empty_msg, 'No results found', 'Total: ₦0.00', None
+    
+    # Format amount as currency
+    filtered_df['amount_formatted'] = filtered_df['amount'].apply(
+        lambda x: f"₦{x:,.2f}"
+    )
+    
+    # Calculate total
+    total = filtered_df['amount'].sum()
+    total_formatted = f"Total: ₦{total:,.2f}"
+    
+    # Get line item name
+    line_item_name = filtered_df['line_item_name'].iloc[0]
+    view_label = 'MDAs' if view_type == 'mda' else 'Mother Ministries'
+    results_title = f"{line_item_name} ({selected_line_item}) - {len(filtered_df)} {view_label}"
+    
+    # Create table
+    table = dash_table.DataTable(
+        id='results-table',
+        columns=[
+            {'name': 'Line Item Code', 'id': 'line_item_code'},
+            {'name': 'Line Item Name', 'id': 'line_item_name'},
+            {'name': 'MDA Code', 'id': 'mda'},
+            {'name': 'MDA Name', 'id': 'mda_name'},
+            {'name': 'Amount (₦)', 'id': 'amount_formatted'}
+        ],
+        data=filtered_df.to_dict('records'),
+        page_size=10,
+        page_action='native',
         style_cell={
             'textAlign': 'left',
-            'padding': '1rem'
+            'padding': '1rem',
+            'fontFamily': '-apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif'
         },
-        style_cell_conditional=[
-            {
-                'if': {'column_id': 'amount'},
-                'textAlign': 'right',
-                'fontWeight': '600'
-            },
-            {
-                'if': {'column_id': 'code'},
-                'color': '#0066cc',
-                'fontWeight': '500'
-            }
-        ],
+        style_header={
+            'backgroundColor': '#1a472a',
+            'color': 'white',
+            'fontWeight': '600',
+            'textTransform': 'uppercase',
+            'fontSize': '0.875rem',
+            'letterSpacing': '0.5px',
+            'border': 'none'
+        },
+        style_data={
+            'backgroundColor': '#faf8f3',
+            'border': 'none',
+            'borderBottom': '1px solid #e0ddd5'
+        },
         style_data_conditional=[
             {
-                'if': {'row_index': 'odd'},
-                'backgroundColor': '#fafafa'
+                'if': {'column_id': 'amount_formatted'},
+                'fontWeight': '600',
+                'color': '#1a472a',
+                'fontVariantNumeric': 'tabular-nums'
             }
         ],
-        # Pagination styling
-        style_as_list_view=True,
-        css=[{
-            'selector': '.previous-next-container',
-            'rule': 'display: flex; justify-content: center; padding: 1rem; background-color: #f8f8f8;'
-        }]
+        style_table={
+            'borderRadius': '8px',
+            'overflow': 'hidden'
+        }
     )
     
-    return (
-        f'Results for: {selected_line_item}',
-        format_currency(total_amount),
-        table
+    # Pagination info
+    pagination_info = html.Div(
+        f"Showing entries from filtered data",
+        className='pagination-info'
     )
+    
+    return html.Div([table, pagination_info]), results_title, total_formatted, filtered_df.to_dict('records')
 
-# Run the app
+
+# Callback for download button (placeholder)
+@app.callback(
+    Output('download-btn', 'n_clicks'),
+    Input('download-btn', 'n_clicks'),
+    prevent_initial_call=True
+)
+def download_button_click(n_clicks):
+    if n_clicks:
+        # Placeholder for future download functionality
+        print("Download button clicked - functionality coming soon!")
+    return None
+
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=8050)
+    app.run(debug=True, port=8050)
