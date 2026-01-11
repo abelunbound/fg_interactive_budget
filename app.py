@@ -523,12 +523,13 @@ navbar = dbc.Navbar(
             dbc.Col([
                 dbc.Nav([
                     dbc.NavLink("Home", href="/", active="exact", className="nav-link"),
-                    dbc.NavLink("Analysis", href="/analysis", active="exact", className="nav-link"),
+                    dbc.NavLink("Misplaced Priorities", href="/analysis", active="exact", className="nav-link"),
+                    dbc.NavLink("2026 Capital Projects", href="/analysis", active="exact", className="nav-link"),
                     dbc.NavLink("Reports", href="/reports", active="exact", className="nav-link"),
                 ], navbar=True)
 
             ])
-        ], align="center", className="w-100")
+        ], align="center", className="")
     ], 
     # style={'maxWidth': '1400px'}
     ),
