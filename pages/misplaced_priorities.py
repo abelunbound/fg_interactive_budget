@@ -166,6 +166,8 @@ def update_table(selected_agency, view_type):
     total_mda_project_value_naira = f"₦{total_mda_project_value:.2f}bn"
     # C: A/B
     flagged_percentage = flagged_amount/total_mda_project_value
+    flagged_percentage1 = flagged_amount/total_mda_project_value
+
     # Format the output as a percentage with 2 decimal places
     format_flagged_as_percent = f"{flagged_percentage:.2%}"
     
