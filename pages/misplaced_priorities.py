@@ -39,7 +39,7 @@ dash.register_page(__name__, path='/misplaced_priorities', name='Misplaced Prior
 # df = pd.DataFrame(dummy_data)
 
 
-misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/llm_alignment_results_1_to_200_combined.csv"
+misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/llm_alignment_results_1_to_380_combined.csv"
 use_columns = [
     'code',
     'ergp_line_item',
@@ -86,9 +86,10 @@ layout = html.Div([
                 html.Label("Search or Select FG Agency or Department"),
                 dcc.Dropdown(
                     id='mda-dropdown',
-                    options=[{'label': '-- Select FG Agency --', 'value': 'ALL'}] + dropdown_options,
-                    value='',
+                    options=[{'label': '-- All FG Agencies --', 'value': 'ALL'}] + dropdown_options,
+                    value='ALL',
                     clearable=False,
+                    placeholder="Select an agency...",
                     style={'borderRadius': '8px'}
                 )
             ], width=9),
@@ -177,9 +178,8 @@ def update_table(selected_agency, view_type):
     # results_title = f"{len(filtered_df)} {view_label}"
 
     if selected_agency == 'ALL':
-        results_title = f"""The total value of 2026 budget padded with projects outside agencies' mandates 
-        amounts to {flagged_amount_naira} or {format_flagged_as_percent} of the cumulative 
-        {total_mda_project_value_naira} capital budget of all FG agencies' assessed"""
+        results_title = f"""{flagged_amount_naira} or {format_flagged_as_percent} of 
+        Nigeria's 2026 {total_mda_project_value_naira} capital budget is padded"""
     else:
         results_title = f"""{format_flagged_as_percent} of this agencies capital budget 
         or {flagged_amount_naira} of its {total_mda_project_value_naira} is outside its mandate"""
@@ -203,6 +203,7 @@ def update_table(selected_agency, view_type):
         page_size=10,
         page_action='native',
         filter_action ='native',
+        # sort_action="native",
         style_cell={
             'textAlign': 'left',
             'padding': '1rem',
