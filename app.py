@@ -253,10 +253,12 @@ navbar = dbc.Navbar(
             dbc.Col([
                 dbc.Nav([
                     dbc.NavLink("Home", href="/", active="exact", className="nav-link"),
-                    dbc.NavLink("Misplaced Priorities", href="/misplaced_priorities", active="exact", className="nav-link"),
-                    dbc.NavLink("2026 Capital Projects", href="/analysis", active="exact", className="nav-link"),
+                    dbc.NavLink("Budget Padding", href="/misplaced_priorities", active="exact", className="nav-link"),
+                    dbc.NavLink("Search 2026 Capital Projects", href="/search-capital-projects", active="exact", className="nav-link"),
                     dbc.NavLink("Citizens Needs", href="/reports", active="exact", className="nav-link"),
                     dbc.NavLink("Known Issues", href="/reports", active="exact", className="nav-link"),
+                    dbc.NavLink("MDA Mandates", href="/reports", active="exact", className="nav-link"),
+
                 ], navbar=True)
 
             ])

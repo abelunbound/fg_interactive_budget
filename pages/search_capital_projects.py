@@ -7,22 +7,11 @@ import pandas as pd
 import dash_bootstrap_components as dbc
 
 # Register this page
-dash.register_page(__name__, path='/misplaced_priorities', name='Misplaced Priorities')
+dash.register_page(__name__, path='/search-capital-projects', name='Analysis')
 
 
-
-misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/combined_llm_alignment_results_1_891.csv"
-use_columns = [
-    'code',
-    'ergp_line_item',
-    'mda_code',
-    'agency',
-    'amount',
-    'alignment',
-    'reason',
-]
-df = pd.read_csv(misplaced_priorities_data_input_path, usecols=use_columns)
-
+ergp_capital_projects_df = "data/outputs/ergp_budget_with_mda_no_duplicates.csv"
+df = pd.read_csv(ergp_capital_projects_df)
 
 # Get unique agencies for dropdown
 agencies = df[['agency', 'mda_code']].drop_duplicates().sort_values('agency')
@@ -32,8 +21,10 @@ dropdown_options = [{'label': row['agency'], 'value': row['mda_code']} for _, ro
 layout = html.Div([
     # Header
     html.Div([
-        html.H1("The MoneyHeist 2026", className="header"),
-        html.P("Ministry & MDA Budget Analysis Tool", className="subtitle")
+        # html.H1("Budget Line Item Analyzer", className="header"),
+        html.P("""Search any item of interest - Ambulance, Street lights, 
+               vehicles to see allocations across agencies""", 
+               className="subtitle")
     ], className="header", style={'marginTop': '2rem'}),
     
     # Controls Section
@@ -41,7 +32,7 @@ layout = html.Div([
         # Radio buttons
         html.Div([
             dbc.RadioItems(
-                id='view-type-mp',
+                id='view-type-search-capital',
                 options=[
                     {'label': ' MDA View', 'value': 'mda'},
                     {'label': ' Mother Ministry View', 'value': 'ministry'}
@@ -55,20 +46,35 @@ layout = html.Div([
         # Dropdown and Download button row
         dbc.Row([
             dbc.Col([
-                html.Label("Search or Select FG Agency or Department"),
+                # html.Label("Search or Select FG Agency or Department"),
                 dcc.Dropdown(
-                    id='mda-dropdown',
+                    id='mda-dropdown-search-capital',
                     options=[{'label': '-- All FG Agencies --', 'value': 'ALL'}] + dropdown_options,
                     value='ALL',
                     clearable=False,
                     placeholder="Select an agency...",
                     style={'borderRadius': '8px'}
                 )
-            ], width=9),
+            ], 
+            md=5, xs=12),
+            
             dbc.Col([
-                html.Label('\u00A0'),  # Non-breaking space for alignment
-                dbc.Button('Download', id='download-btn-mp', color='primary', className='w-100')
-            ], width=3, style={'display': 'flex', 'flexDirection': 'column'})
+                # html.Label("Search or Select FG Agency or Department"),
+                dbc.Input(
+                    id='search-capital-input',
+                    type='text',
+                    placeholder='Enter search term (e.g., street light)...',
+                    debounce=True
+                )
+            ], 
+            md=7, xs=12),
+
+            # dbc.Col([
+            #     html.Label('\u00A0'),  # Non-breaking space for alignment
+            #     dbc.Button('Download', id='download-btn-search-capital', color='primary')
+            # ], 
+            # md=1, xs=12, 
+            # style={'display': 'flex', 'flexDirection': 'column'})
         ])
     ], className='controls-section'),
     
@@ -76,28 +82,31 @@ layout = html.Div([
     html.Div([
         # Results header
         html.Div([
-            html.H2(id='results-title-mp', children='Select an FG Agency to view results', className='results-title'),
-            html.Div(id='total-badge-mp', children='Total: ₦0.00', className='total-badge')
+            # html.H2(id='results-title-search-capital', children='Select an FG Agency to view results', className='results-title'),
+            html.Div(id='total-badge-search-capital', children='Total: ₦0.00', className='total-badge')
         ], className='results-header'),
         
         # Table
-        html.Div(id='table-container-mp')
+        html.Div(id='table-container-search-capital')
     ], className='results-section'),
     
     # Store for filtered data
-    dcc.Store(id='filtered-data-store-mp')
+    dcc.Store(id='filtered-data-store-search-capital')
 ])
 
 # Callback to filter data and update table
 @callback(
-    [Output('table-container-mp', 'children'),
-     Output('results-title-mp', 'children'),
-     Output('total-badge-mp', 'children'),
-     Output('filtered-data-store-mp', 'data')],
-    [Input('mda-dropdown', 'value'),
-     Input('view-type-mp', 'value')]
+    [Output('table-container-search-capital', 'children'),
+    #  Output('results-title-search-capital', 'children'),
+     Output('total-badge-search-capital', 'children'),
+     Output('filtered-data-store-search-capital', 'data')
+     ],
+    [Input('mda-dropdown-search-capital', 'value'),
+     Input('view-type-search-capital', 'value'),
+     Input('search-capital-input', 'value')
+     ]
 )
-def update_table(selected_agency, view_type):
+def update_table(selected_agency, view_type, search_capital_project_term):
     if not selected_agency:
         empty_msg = html.Div([
             html.Div('📊', style={'fontSize': '3rem', 'opacity': '0.5', 'marginBottom': '1rem'}),
@@ -124,40 +133,18 @@ def update_table(selected_agency, view_type):
     filtered_df['amount_formatted'] = filtered_df['amount'].apply(
         lambda x: f"₦{x:,.2f}"
     )
+
+    # Search
+    if search_capital_project_term:
+        # Case-insensitive search across all columns
+        mask = filtered_df['ergp_line_item'].astype(str).str.contains(
+            search_capital_project_term, case=False, na=False
+        )
+        filtered_df = filtered_df[mask]
     
     # Calculate total
     total = filtered_df['amount'].sum()
     total_formatted = f"Total: ₦{total:,.2f}"
-
-    # A: Sum amount where alignment is NO
-    flagged = filtered_df[filtered_df["alignment"] == "NO"]
-    flagged_amount = flagged['amount'].sum()
-    flagged_amount = flagged_amount/1000000000
-    flagged_amount_naira = f"₦{flagged_amount:.2f}bn"
-    # B: Sum amount for full filtered dataframe
-    total_mda_project_value = total/1000000000
-    total_mda_project_value_naira = f"₦{total_mda_project_value:.2f}bn"
-    # C: A/B
-    flagged_percentage = flagged_amount/total_mda_project_value
-    flagged_percentage1 = flagged_amount/total_mda_project_value
-
-    # Format the output as a percentage with 2 decimal places
-    format_flagged_as_percent = f"{flagged_percentage:.2%}"
-    
-    # Count occurrences of misplaced priorities, check as a percentage of total
-    
-    # view_label = 'MDAs' if view_type == 'mda' else 'Mother Ministries'
-    # results_title = f"{len(filtered_df)} {view_label}"
-
-    if selected_agency == 'ALL':
-        results_title = f"""{flagged_amount_naira} or {format_flagged_as_percent} of 
-        Nigeria's 2026 {total_mda_project_value_naira} capital budget is padded"""
-    else:
-        results_title = f"""{format_flagged_as_percent} of this agencies capital budget 
-        or {flagged_amount_naira} of its {total_mda_project_value_naira} is outside its mandate"""
-
-    
-
 
    
     # Create table
@@ -166,9 +153,10 @@ def update_table(selected_agency, view_type):
         columns=[
             {'name': 'ERGPCode', 'id': 'code'},
             {'name': 'Capital Project', 'id': 'ergp_line_item'},
+            {'name': 'Status', 'id': 'status'},
+            {'name': 'Agency', 'id': 'agency'},
             {'name': 'Amount (₦)', 'id': 'amount_formatted'},
-            {'name': 'Within Mandate?', 'id': 'alignment'},
-            {'name': 'Assessment', 'id': 'reason'},
+            
             
         ],
         data=filtered_df.to_dict('records'),
@@ -216,17 +204,21 @@ def update_table(selected_agency, view_type):
         f"Showing entries from filtered data",
         className='pagination-info'
     )
-    
-    return html.Div([table, pagination_info]), results_title, total_formatted, filtered_df.to_dict('records')
 
-# Callback for download button (placeholder)
-@callback(
-    Output('download-btn-mp', 'n_clicks'),
-    Input('download-btn-mp', 'n_clicks'),
-    prevent_initial_call=True
-)
-def download_button_click(n_clicks):
-    if n_clicks:
-        # Placeholder for future download functionality
-        print("Download button clicked - functionality coming soon!")
-    return None
+
+    
+    
+    return html.Div([table, pagination_info]), total_formatted, filtered_df.to_dict('records')
+
+# # Callback for download button (placeholder)
+# @callback(
+#     Output('download-btn-search-capital', 'n_clicks'),
+#     Input('download-btn-search-capital', 'n_clicks'),
+#     prevent_initial_call=True
+# )
+# def download_button_click(n_clicks):
+#     if n_clicks:
+#         # Placeholder for future download functionality
+#         print("Download button clicked - functionality coming soon!")
+#     return None
+

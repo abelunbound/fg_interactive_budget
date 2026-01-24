@@ -47,8 +47,11 @@ dropdown_options = [{'label': f"{row['line_item_code']} - {row['line_item_name']
 layout = html.Div([
     # Header
     html.Div([
-        html.H1("Budget Line Item Analyzer", className="header"),
-        html.P("Ministry & MDA Budget Analysis Tool", className="subtitle")
+        html.H1("What is FG's 2026 priority?", className="header"),
+        html.P("""Use cases: Contractors, Citizens & Civil Society, National Assembly members
+               NASS & Executive Budget Office
+               """, 
+               className="subtitle")
     ], className="header", style={'marginTop': '2rem'}),
     
     # Controls Section
