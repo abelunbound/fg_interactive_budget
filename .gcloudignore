@@ -1,0 +1,14 @@
+.git
+.gitignore
+.env
+venv/
+__pycache__/
+*.ipynb
+*.xlsx
+checkpoints/
+data/etl_pipeline/
+data/inputs/*.pdf
+single_page_app.py
+README_DASH.md
+dependencies.md
+search_dev.ipynb

@@ -7,6 +7,7 @@ import dash_bootstrap_components as dbc
 
 # Initialize the Dash app with Bootstrap theme
 app = dash.Dash(__name__, external_stylesheets=[dbc.themes.BOOTSTRAP], use_pages=True)
+server = app.server
 
 # Custom CSS
 app.index_string = '''
@@ -280,3 +281,5 @@ app.layout = html.Div([
 
 if __name__ == '__main__':
     app.run(debug=True, port=8050)
+else:
+    server = app.server  # Export the server for Gunicorn

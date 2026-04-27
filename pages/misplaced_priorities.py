@@ -10,7 +10,8 @@ import dash_bootstrap_components as dbc
 dash.register_page(__name__, path='/misplaced_priorities', name='Misplaced Priorities')
 
 
-
+# llm_alignment_results_complete_27_540_projects
+# combined_llm_alignment_results_1_891
 misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/combined_llm_alignment_results_1_891.csv"
 use_columns = [
     'code',
@@ -26,7 +27,15 @@ df = pd.read_csv(misplaced_priorities_data_input_path, usecols=use_columns)
 
 # Get unique agencies for dropdown
 agencies = df[['agency', 'mda_code']].drop_duplicates().sort_values('agency')
-dropdown_options = [{'label': row['agency'], 'value': row['mda_code']} for _, row in agencies.iterrows()]
+dropdown_options = [{'label': row['agency'], 'value': str(row['mda_code'])} for _, row in agencies.iterrows()]
+
+def format_naira(value_bn):
+    """Format a value in billions to ₦Xtrillion or ₦Xbn."""
+    if value_bn >= 1000:
+        return f"₦{value_bn / 1000:.1f}trillion"
+    return f"₦{value_bn:.2f}billion"
+
+
 
 # Page layout
 layout = html.Div([
@@ -110,7 +119,7 @@ def update_table(selected_agency, view_type):
     if selected_agency == 'ALL':
         filtered_df = df.copy()
     else:
-        filtered_df = df[df['mda_code'] == selected_agency].copy()
+        filtered_df = df[df['mda_code'] == int(selected_agency)].copy()
     
     if filtered_df.empty:
         empty_msg = html.Div([
@@ -133,10 +142,12 @@ def update_table(selected_agency, view_type):
     flagged = filtered_df[filtered_df["alignment"] == "NO"]
     flagged_amount = flagged['amount'].sum()
     flagged_amount = flagged_amount/1000000000
-    flagged_amount_naira = f"₦{flagged_amount:.2f}bn"
+    flagged_amount_naira = format_naira(flagged_amount)
+    # flagged_amount_naira = f"₦{flagged_amount:.2f}bn"
     # B: Sum amount for full filtered dataframe
     total_mda_project_value = total/1000000000
-    total_mda_project_value_naira = f"₦{total_mda_project_value:.2f}bn"
+    total_mda_project_value_naira = format_naira(total_mda_project_value)
+    # total_mda_project_value_naira = f"₦{total_mda_project_value:.2f}bn"
     # C: A/B
     flagged_percentage = flagged_amount/total_mda_project_value
     flagged_percentage1 = flagged_amount/total_mda_project_value
@@ -149,6 +160,7 @@ def update_table(selected_agency, view_type):
     # view_label = 'MDAs' if view_type == 'mda' else 'Mother Ministries'
     # results_title = f"{len(filtered_df)} {view_label}"
 
+    
     if selected_agency == 'ALL':
         results_title = f"""{flagged_amount_naira} or {format_flagged_as_percent} of 
         Nigeria's 2026 {total_mda_project_value_naira} capital budget is padded"""

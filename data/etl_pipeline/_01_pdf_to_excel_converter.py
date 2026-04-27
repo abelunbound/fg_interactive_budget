@@ -399,9 +399,9 @@ class PDFToExcelConverter:
 def main():
     """Main execution function."""
     # Configuration
-    pdf_path = "data/inputs/2026 Appropriation Bill Details.pdf"
-    output_path = "data/outputs/output.xlsx"
-    pages = "5-10"
+    pdf_path = "data_approved/inputs/2026 Appropriation Bill Details.pdf"
+    output_path = "data_approved/outputs/output.xlsx"
+    pages = "5-100"
 
     # Convert
     converter = PDFToExcelConverter(pdf_path, output_path)
@@ -418,3 +418,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# script _01 needss file in "data_approved/inputs/2026 Appropriation Bill Details.pdf"
+# script _02 needss file in "data_approved/outputs/output.xlsx"
+# script _03 needss file in "data_approved/outputs/output_merged.xlsx" 
+# script _04 needss file in "data_approved/outputs/output_merged_with_mda.xlsx"

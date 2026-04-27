@@ -70,8 +70,8 @@ def merge_excel_sheets_to_one(
 
 if __name__ == "__main__":
     # ===== CONFIG =====
-    input_excel = "data/outputs/output.xlsx"           # Your multi-sheet file
-    output_excel = "data/outputs/output_merged.xlsx"   # New single-sheet file
+    input_excel = "data_approved/outputs/output.xlsx"           # Your multi-sheet file
+    output_excel = "data_approved/outputs/output_merged.xlsx"   # New single-sheet file
 
     merge_excel_sheets_to_one(
         input_excel=input_excel,

@@ -99,8 +99,8 @@ def propagate_mda_down(df, mda_col=4, source_col=0):
 
 if __name__ == "__main__":
     # ===== CONFIG =====
-    input_excel = "data/outputs/output_merged.xlsx"
-    output_excel = "data/outputs/output_merged_with_mda.xlsx"
+    input_excel = "data_approved/outputs/output_merged.xlsx"
+    output_excel = "data_approved/outputs/output_merged_with_mda.xlsx"
 
     add_mda_column(
         input_excel=input_excel,
