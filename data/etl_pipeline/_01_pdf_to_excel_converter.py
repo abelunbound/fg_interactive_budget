@@ -76,6 +76,21 @@ import camelot  # pylint: disable=no-member
 import pandas as pd
 
 
+import time
+from functools import wraps
+
+def timed(func):
+    @wraps(func)
+    def wrapper(*args, **kwargs):
+        start = time.perf_counter()
+        try:
+            return func(*args, **kwargs)
+        finally:
+            elapsed = time.perf_counter() - start
+            print(f"[TIMER] {func.__name__} took {elapsed:.2f} seconds")
+    return wrapper
+
+
 class PDFTableExtractor:
     """Handles PDF table extraction using Camelot."""
 
@@ -99,9 +114,11 @@ class PDFTableExtractor:
             self.pdf_path,
             pages=pages,
             flavor="stream",
+            # flavor="lattice",
             row_tol=row_tol,
             column_tol=column_tol,  # Critical for column detection
         )
+
         return tables
 
     def extract_with_adaptive_params(self, pages: str):
@@ -110,7 +127,7 @@ class PDFTableExtractor:
         Useful when table structure varies across pages.
         """
         param_combinations = [
-            {"row_tol": 3, "column_tol": 2},  # Most sensitive
+            {"row_tol": 8, "column_tol": 2},  # Most sensitive
             {"row_tol": 3, "column_tol": 3},  # Moderate
             {"row_tol": 3, "column_tol": 5},  # Less sensitive
         ]
@@ -175,6 +192,144 @@ class TableCleaner:
 
         return df, len(rows_to_drop)
 
+    # ### Fix  
+    # @staticmethod
+    # def merge_continuation_rows(
+    #     df: pd.DataFrame, code_col: int = 0, name_col: int = 1
+    # ) -> Tuple[pd.DataFrame, int]:
+    #     """
+    #     Merge rows where CODE column is empty (continuation rows).
+
+    #     Uses midpoint split on gaps between ERGP rows:
+    #     - First floor(N/2) empty rows → post-code orphans, appended to ERGP_A
+    #     - Last  ceil(N/2) empty rows → pre-code orphans, prepended to ERGP_B
+
+    #     Args:
+    #         df: DataFrame to process
+    #         code_col: Index of CODE column
+    #         name_col: Index of PROJECT NAME column
+
+    #     Returns:
+    #         Tuple of (cleaned DataFrame with merged rows, number of rows merged)
+    #     """
+    #     df = df.copy()
+    #     rows_to_drop = []
+
+    #     # Only look at ERGP rows — ignore non-ERGP non-empty rows (headers, totals, etc.)
+    #     ergp_indices = [
+    #         i for i in range(len(df))
+    #         if str(df.iloc[i, code_col]).strip().upper().startswith("ERGP")
+    #     ]
+
+    #     def _name(idx):
+    #         v = str(df.iloc[idx, name_col]).strip()
+    #         return v if v and v != "nan" else ""
+
+    #     def _append(idx, text):
+    #         base = _name(idx)
+    #         df.iloc[idx, name_col] = f"{base} {text}".strip() if base else text
+
+    #     def _prepend(idx, text):
+    #         base = _name(idx)
+    #         df.iloc[idx, name_col] = f"{text} {base}".strip() if base else text
+
+    #     # --- Process gaps between consecutive ERGP rows ---
+    #     for k in range(len(ergp_indices) - 1):
+    #         a = ergp_indices[k]      # ERGP_A index
+    #         b = ergp_indices[k + 1]  # ERGP_B index
+
+    #         # Empty-code rows strictly between a and b
+    #         gap = [
+    #             i for i in range(a + 1, b)
+    #             if TableCleaner._is_empty_code(str(df.iloc[i, code_col]).strip())
+    #         ]
+    #         N = len(gap)
+    #         if N == 0:
+    #             continue
+    #         # ----- Fix for wrong cells being merged to project names
+    #         if N == 1:
+    #             b_name = _name(b)
+    #             if b_name:  # B already has content → orphan is tail of A
+    #                 text = _name(gap[0])
+    #                 if text:
+    #                     _append(a, text)
+    #             else:       # B is empty → orphan is head of B
+    #                 text = _name(gap[0])
+    #                 if text:
+    #                     _prepend(b, text)
+    #             rows_to_drop.extend(gap)
+    #             continue
+    #         # ---- Fix for wrong cells being merged to project names
+
+    #         n_post = N // 2       # goes to ERGP_A (post-code)
+    #         n_pre  = N - n_post   # goes to ERGP_B (pre-code)
+
+    #         # Post-code: append in order to ERGP_A
+    #         for idx in gap[:n_post]:
+    #             text = _name(idx)
+    #             if text:
+    #                 _append(a, text)
+
+    #         # Pre-code: prepend in order to ERGP_B
+    #         pre_texts = [_name(idx) for idx in gap[n_post:] if _name(idx)]
+    #         if pre_texts:
+    #             _prepend(b, " ".join(pre_texts))
+
+    #         rows_to_drop.extend(gap)
+
+    #     # --- Empty rows after last ERGP: append to last ERGP ---
+    #     if ergp_indices:
+    #         last = ergp_indices[-1]
+    #         for i in range(last + 1, len(df)):
+    #             if TableCleaner._is_empty_code(str(df.iloc[i, code_col]).strip()):
+    #                 text = _name(i)
+    #                 if text:
+    #                     _append(last, text)
+    #                 rows_to_drop.append(i)
+
+    #     ## --- Empty rows before first ERGP: drop silently ---
+    #     # if ergp_indices:
+    #     #     first = ergp_indices[0]
+    #     #     for i in range(1, first):
+    #     #         if TableCleaner._is_empty_code(str(df.iloc[i, code_col]).strip()):
+    #     #             rows_to_drop.append(i)
+
+    #     # # --- Empty rows before first ERGP: prepend to first ERGP ---
+    #     # if ergp_indices:
+    #     #     first = ergp_indices[0]
+    #     #     pre_texts = []
+    #     #     for i in range(1, first):
+    #     #         if TableCleaner._is_empty_code(str(df.iloc[i, code_col]).strip()):
+    #     #             text = _name(i)
+    #     #             if text:
+    #     #                 pre_texts.append(text)
+    #     #             rows_to_drop.append(i)
+    #     #     if pre_texts:
+    #     #         _prepend(first, " ".join(pre_texts))
+
+    #     # --- Empty rows before first ERGP: prepend only adjacent orphans ---
+    #     if ergp_indices:
+    #         first = ergp_indices[0]
+    #         # Walk backwards from first ERGP, collect only consecutive empty rows
+    #         adjacent = []
+    #         for i in range(first - 1, 0, -1):
+    #             if TableCleaner._is_empty_code(str(df.iloc[i, code_col]).strip()):
+    #                 text = _name(i)
+    #                 adjacent.append((i, text))
+    #             else:
+    #                 break  # stop at first non-empty-code row
+    #         # Reverse to restore original order, prepend to first ERGP
+    #         adjacent.reverse()
+    #         pre_texts = [text for _, text in adjacent if text]
+    #         rows_to_drop.extend([i for i, _ in adjacent])
+    #         if pre_texts:
+    #             _prepend(first, " ".join(pre_texts))
+
+
+    #     df = df.drop(list(set(rows_to_drop))).reset_index(drop=True)
+    #     return df, len(set(rows_to_drop))
+        
+
     @staticmethod
     def _is_empty_code(code_value: str) -> bool:
         """Check if a code value is empty or invalid."""
@@ -193,7 +348,7 @@ class TableCleaner:
             True if table contains ERGP codes, False otherwise
         """
         # Check first few rows of column 0 (CODE column)
-        for i in range(min(5, len(df))):
+        for i in range(min(20, len(df))):
             code = str(df.iloc[i, 0]).strip().upper()
             if code.startswith("ERGP"):
                 return True
@@ -344,10 +499,35 @@ class PDFToExcelConverter:
             "total_rows_merged": 0,
         }
 
-        # Process and export
+        # # Process and export
+        # with ExcelExporter(self.output_path) as exporter:
+        #     for idx, table in enumerate(tables):
+        #         df = table.df.copy()
+
+        # ---Fix for duplicate tables Process and export
+        seen_tables = {}  # key: page number, value: set of df hashes
         with ExcelExporter(self.output_path) as exporter:
             for idx, table in enumerate(tables):
                 df = table.df.copy()
+
+                # Deduplicate: skip if identical table already seen on this page
+                df_hash = pd.util.hash_pandas_object(df).sum()
+                if table.page in seen_tables and df_hash in seen_tables[table.page]:
+                    print(f"Table {idx+1} (Page {table.page}): duplicate, skipping")
+                    continue
+                seen_tables.setdefault(table.page, set()).add(df_hash)
+                # ---Fix for duplicate tables ---
+
+
+                ##### Added 27 Apr 2026 - troubleshooting
+                # ##### Added 27 Apr 2026 - troubleshooting
+                print(f"\n=== RAW TABLE {idx+1} (Page {table.page}) shape={df.shape} ===")
+                for row_i, row in df.iterrows():
+                    print(f"  [{row_i}] CODE='{row.iloc[0]}' | NAME='{row.iloc[1]}'")
+                print("---")
+
+                ##### Added 27 Apr 2026 - troubleshooting
+
                 rows_merged = 0
 
                 print(f"Found {tables.n} tables\n", flush=True)  # ← Add flush=True
@@ -396,16 +576,24 @@ class PDFToExcelConverter:
         return stats
 
 
+
+
+
+@timed
 def main():
     """Main execution function."""
     # Configuration
-    pdf_path = "data_approved/inputs/2026 Appropriation Bill Details.pdf"
+    pdf_path = "data_approved/inputs/approved_2026_budget.pdf"
     output_path = "data_approved/outputs/output.xlsx"
-    pages = "5-100"
+    pages = "288-291"
+    # pages = "497-503"
+    # pages = "1524-1527" #Ministry of Works and Housing to test project names greater than 6 lines
 
     # Convert
     converter = PDFToExcelConverter(pdf_path, output_path)
-    stats = converter.convert(pages=pages, merge_rows=True, row_tol=3, column_tol=1)
+    stats = converter.convert(pages=pages, merge_rows=True, row_tol=4, column_tol=1)
+    # stats = converter.convert(pages=pages, merge_rows=True)
+
 
     # Summary
     print(f"{'=' * 60}")

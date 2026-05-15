@@ -101,8 +101,14 @@ def split_tables_by_type(
 
 if __name__ == "__main__":
     # ===== CONFIG =====
+    # input_excel = "data_approved/outputs/output_merged_with_mda.xlsx"  # Your merged file with MDA column
     input_excel = "data_approved/outputs/output_merged_with_mda.xlsx"  # Your merged file with MDA column
     output_excel = "data_approved/outputs/budget_split_into_capital_and_all_envelopes.xlsx"
+    
+    #1. to_500_output_merged_with_mda
+    #2. 501_to_1000_output_merged_with_mda
+    #3. 1001_to_2000_output_merged_with_mda
+    #4. output_merged_with_mda
     
     split_tables_by_type(
         input_excel=input_excel,

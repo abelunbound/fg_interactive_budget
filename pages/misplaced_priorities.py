@@ -12,7 +12,11 @@ dash.register_page(__name__, path='/misplaced_priorities', name='Misplaced Prior
 
 # llm_alignment_results_complete_27_540_projects
 # combined_llm_alignment_results_1_891
-misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/combined_llm_alignment_results_1_891.csv"
+# misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/combined_llm_alignment_results_1_891.csv"
+
+misplaced_priorities_data_input_path = "data/outputs/mandate_deviation/csv_classified_correct_approved_capital_budget_2026.csv"
+
+
 use_columns = [
     'code',
     'ergp_line_item',
@@ -22,7 +26,11 @@ use_columns = [
     'alignment',
     'reason',
 ]
-df = pd.read_csv(misplaced_priorities_data_input_path, usecols=use_columns)
+# df = pd.read_csv(misplaced_priorities_data_input_path, usecols=use_columns)
+
+df = pd.read_csv(misplaced_priorities_data_input_path)
+df.columns = df.columns.str.strip()
+df = df[use_columns]
 
 
 # Get unique agencies for dropdown
